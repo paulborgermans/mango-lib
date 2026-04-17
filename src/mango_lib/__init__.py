@@ -1,2 +1,1 @@
-def hello() -> str:
-    return "Hello from mango-lib!"
+from .irods.auth import get_zone_operator_session

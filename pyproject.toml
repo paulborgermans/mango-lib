@@ -1,7 +1,7 @@
 [project]
 name = "mango-lib"
-version = "0.1.0"
-description = "Library of utility functions used across ManGO POrtal, ManGO Flow and ManGO Ingest amongst others"
+version = "0.1.1"
+description = "Library of utility functions used across ManGO Portal, ManGO Flow and ManGO Ingest amongst others"
 readme = "README.md"
 authors = [
     { name = "Paul Borgermans", email = "paul.borgermans@kuleuven.be" },
@@ -13,5 +13,5 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.8.15,<0.9.0"]
+requires = ["uv_build>=0.11,<0.12.0"]
 build-backend = "uv_build"
