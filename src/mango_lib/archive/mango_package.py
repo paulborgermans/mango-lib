@@ -11,34 +11,81 @@ The only compulsory arguments of the packaging function are
 import functools
 import io
 import json
-from irods.data_object import iRODSDataObject
-from irods.collection import iRODSCollection
-from mango_mdconverter.md2dict import convert_metadata_to_dict
 from pathlib import Path
-from typing import Iterable, Generator
+from typing import Generator, Iterable
+
+from irods.collection import iRODSCollection
+from irods.data_object import iRODSDataObject
+from mango_mdconverter.md2dict import convert_metadata_to_dict
 
 from mango_lib.archive import mango_tar
 
 MANIFEST_PREFIX = "data"
+MANIFEST_NAME = "manifest-sha256.txt"
 LAST_GOOD_WRITE = "last-good-write.json"
+LOCAL_FOLDER = Path(".")
+
+MANIFEST_PATH = LOCAL_FOLDER / MANIFEST_NAME
+LAST_GOOD_WRITE_PATH = LOCAL_FOLDER / LAST_GOOD_WRITE
 
 
 def tar_prefix(dataset):
     return f"{dataset}/bag/data"
 
 
+def add_irods_metadata_to_tar(
+    orchestrator: mango_tar.TarOrchestrator,
+    item: mango_tar.TarInputItem,
+    alt_tar: io.BufferedWriter | None = None,
+):
+    if not isinstance(item, mango_tar.iRODSInputItem):
+        return
+    metadata = convert_metadata_to_dict(item.item.metadata.items())
+
+    if len(metadata) == 0:
+        # skip further processing
+        print(f"NO metadata for {item.name}")
+
+        return
+
+    bytes_buff = json.dumps(metadata).encode()
+    metadata_base_path = (
+        item.item.path
+        if isinstance(item.item, iRODSDataObject)
+        else str(Path(item.item.path) / item.item.name)
+    )
+    tar_input_item = mango_tar.BytesInputItem(
+        bytes_buff,
+        needs_checksum=True,
+        path=f"{metadata_base_path}.metadata.json",
+        prefix=item.prefix,
+        alt_prefix=item.alt_prefix,
+        rel_path=item.rel_path,
+    )
+    mango_tar.record_checksum(orchestrator, tar_input_item)
+    mango_tar.add_bytes_item_to_tar(orchestrator.dest_tar, tar_input_item)
+
+    if alt_tar:
+        mango_tar.add_bytes_item_to_tar(alt_tar, tar_input_item)
+
+
 def packaging_orchestrator(
     orchestrator: mango_tar.TarOrchestrator = None,
-    manifest_name: str = "manifest-sha256.txt",
-    last_good_write_name: str = "last_good_write.json",
+    manifest_path: Path = MANIFEST_PATH,
+    last_good_write_path: Path = LAST_GOOD_WRITE_PATH,
+    metadata_tar: io.BufferedWriter | None = None,
 ):
 
     if not isinstance(orchestrator, mango_tar.TarOrchestrator):
         orchestrator = mango_tar.TarOrchestrator()  # initializing!
+
+    # CHECKSUMS FOR MANIFEST
+    orchestrator.add_callback("delay_point", "checksum-save", mango_tar.record_checksum)
     orchestrator.add_callback("file_end", "checksum-save", mango_tar.record_checksum)
+
     flush_checksums = functools.partial(
         mango_tar.flush_checksums,
-        filename=manifest_name,
+        filename=manifest_path,
         format="bagit",
         name_field="alt_name",
     )
@@ -48,21 +95,31 @@ def packaging_orchestrator(
         flush_checksums,
     )
 
-    # ADD METADATA CALLBACK
-    def exit_gracefully(orchestrator: mango_tar.TarOrchestrator):
+    # add metadata
+    add_metadata_partial = functools.partial(
+        add_irods_metadata_to_tar,
+        alt_tar=metadata_tar,
+    )
+    orchestrator.add_callback("file_end", "add_metadata", add_metadata_partial)
+    orchestrator.add_callback(
+        "collection_item", "add_collection_metadata", add_metadata_partial
+    )
+
+    def log_good_write(orchestrator: mango_tar.TarOrchestrator):
         last_good_write = json.dumps(orchestrator.last_good_write)
-        with Path(last_good_write_name).open("w") as last_good_write_fp:
+        with last_good_write_path.open("w") as last_good_write_fp:
             last_good_write_fp.write(last_good_write)
 
+    orchestrator.add_callback("abort", "flush-checksums", flush_checksums)
+    orchestrator.add_callback("abort", "last-good-write", log_good_write)
+
     orchestrator.add_callback("exception", "flush-checksums", flush_checksums)
-    orchestrator.add_callback("exception", "last-good-write", exit_gracefully)
+    orchestrator.add_callback("exception", "last-good-write", log_good_write)
 
 
 def parse_file_iterator(
     file_iterator: Iterable, rel_path: str, dataset_name: str
 ) -> Generator[mango_tar.TarInputItem]:
-    # if isinstance(file_iterator, iRODSTarInputJSONLReader):
-    #     return file_iterator.get_next_object()
     for file in file_iterator:
         if isinstance(file, mango_tar.TarInputItem):
             yield file
@@ -82,7 +139,7 @@ def parse_file_iterator(
 
 
 def parse_folder_iterator(
-    folder_iterator: Iterable, rel_path: str = ".", dataset_name: str = ""
+    folder_iterator: Iterable, rel_path: str, dataset_name: str
 ) -> Generator[mango_tar.iRODSInputItem]:
     # if isinstance(folder_iterator, iRODSTarInputJSONLReader):
     #     return folder_iterator.get_next_object()
@@ -95,11 +152,10 @@ def parse_folder_iterator(
 
 
 def bag_tar(
-    dest_tar: iRODSDataObject | io.BufferedWriter,
     orchestrator: mango_tar.TarOrchestrator,
     dataset_name: str,
-    manifest_path: Path = Path("manifest-sha256.txt"),
-    rel_path: str = ".",
+    manifest_path: Path = MANIFEST_PATH,
+    rel_path: str = str(LOCAL_FOLDER),
 ):
     manifest_tar_input = mango_tar.FileInputItem(
         manifest_path, rel_path=rel_path, prefix=tar_prefix(dataset_name)
@@ -108,85 +164,49 @@ def bag_tar(
         mango_tar.stream_fp_to_tar(
             manifest_fp,
             input_item=manifest_tar_input,
-            tar_dest=dest_tar,
+            tar_dest=orchestrator.dest_tar,
             read_buffer_size=1048576,
             orchestrator=orchestrator,
         )
-
-
-def add_irods_metadata_to_tar(
-    orchestrator: mango_tar.TarOrchestrator,
-    item: mango_tar.TarInputItem,
-    rel_path="",
-    prefix: str = "",
-    alt_prefix: str = "",
-    alt_tar: io.BufferedWriter | None = None,
-):
-    if not isinstance(item, mango_tar.iRODSInputItem):
-        return
-    metadata = convert_metadata_to_dict(item.item.metadata.items())
-
-    if len(metadata) == 0:
-        # skip further processing
-        print(f"NO metadata for {item.name}")
-
-        return
-    bytes_buff = json.dumps(metadata).encode()
+    bagit_contents = "BagIt version 0.97\nTag-File-Character-Encoding: UTF-8\n".encode()
     tar_input_item = mango_tar.BytesInputItem(
-        (
-            f"{item.item.path}.metadata.json"  # type: ignore
-            if isinstance(item.item, iRODSDataObject)
-            else f"{item.item.path}/{item.item.name}.metadata.json"
-        ),
-        bytes_buff,
-        needs_checksum=True,
-        prefix=prefix,
-        alt_prefix=alt_prefix,
-        rel_path=rel_path,
+        bagit_contents, needs_checksum=False, path=f"{dataset_name}/bag/bagit.txt"
     )
-    mango_tar.record_checksum(orchestrator, tar_input_item)
     mango_tar.add_bytes_item_to_tar(orchestrator.dest_tar, tar_input_item)
-    if alt_tar:
-        mango_tar.add_bytes_item_to_tar(alt_tar, tar_input_item)
 
 
 def package_dataset(
     file_iterator: Iterable,
     dest_tar: iRODSDataObject | io.BufferedWriter,
-    base_path: str,
-    orchestrator: mango_tar.TarOrchestrator | None = None,
-    folder_iterator: Iterable | None = None,
+    base_path: str,  # to compute relative paths
     dataset_name: str = "dummy_dataset",
-    manifest_path: Path = Path("manifest-sha256.txt"),
-    local_folder: Path = Path("."),
+    folder_iterator: Iterable | None = None,
+    orchestrator: mango_tar.TarOrchestrator | None = None,
+    local_folder: Path = LOCAL_FOLDER,
+    manifest_name: str = MANIFEST_NAME,
+    add_metadata_tar: bool = False,
     # rocrate_source=None,
 ):
+    manifest_path = local_folder / manifest_name
     with manifest_path.open("w"):
         pass
     last_good_write_path = local_folder / LAST_GOOD_WRITE
+
     files = parse_file_iterator(file_iterator, base_path, dataset_name)
     collections = parse_folder_iterator(folder_iterator, base_path, dataset_name)
+
+    # metadata tar
+    if add_metadata_tar:
+        alt_metadata_tar_path = local_folder / f"{dataset_name}_metadata.tar"
+        alt_metadata_tar = alt_metadata_tar_path.open("wb")
+    else:
+        alt_metadata_tar = None
+
+    # set up orchestrator, from scratch if none is provided
     orchestrator = packaging_orchestrator(
-        orchestrator, str(manifest_path), str(last_good_write_path)
+        orchestrator, manifest_path, last_good_write_path, alt_metadata_tar
     )
 
-    # add metadata
-    alt_metadata_tar_path = local_folder / f"{dataset_name}_metadata.tar"
-    alt_metadata_tar = alt_metadata_tar_path.open("wb")
-    add_metadata_partial = functools.partial(
-        add_irods_metadata_to_tar,  # from frigo.py
-        dest_tar=dest_tar,
-        prefix=tar_prefix(dataset_name),
-        alt_prefix=MANIFEST_PREFIX,
-        rel_path=base_path,
-        alt_tar=alt_metadata_tar,
-    )
-    orchestrator.add_callback("file_end", "add_metadata", add_metadata_partial)
-    orchestrator.add_callback(
-        "collection_item", "add_collection_metadata", add_metadata_partial
-    )
-
-    # the meat
     try:
         mango_tar.create_tar_from_iterators_and_orchestrator(
             object_iterator=files,
@@ -194,10 +214,13 @@ def package_dataset(
             dest_tar=dest_tar,
             orchestrator=orchestrator,
         )
-        alt_metadata_tar.close()
-        bag_tar(dest_tar, orchestrator, dataset_name, manifest_path, local_folder)
+        if alt_metadata_tar is not None:
+            alt_metadata_tar.close()
+
+        # add manifest and bagit
+        bag_tar(orchestrator, dataset_name, manifest_path, local_folder)
         # if rocrate_source is not None:
-        #     add_rocrate(dest_tar, rocrate_source, MANIFEST_NAME)
+        #     add_rocrate(orchestrator, rocrate_source, MANIFEST_NAME) ??
     except Exception as e:
         print(f"Caught error, check last good write at {last_good_write_path}!")
         raise e
