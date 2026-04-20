@@ -147,7 +147,10 @@ def parse_folder_iterator(
         if not isinstance(folder, iRODSCollection):
             raise TypeError("Item must be an iRODS Collection")
         yield mango_tar.iRODSInputItem(
-            folder, rel_path=rel_path, prefix=tar_prefix(dataset_name)
+            folder,
+            rel_path=rel_path,
+            prefix=tar_prefix(dataset_name),
+            alt_prefix=MANIFEST_PREFIX,
         )
 
 
