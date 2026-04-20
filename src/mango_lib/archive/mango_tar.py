@@ -540,9 +540,12 @@ def record_checksum(orchestrator: TarOrchestrator, item: TarInputItem):
 
 
 def flush_checksums(
-    orchestrator: TarOrchestrator, filename: str, format="bagit", name_field="name"
+    orchestrator: TarOrchestrator,
+    manifest_path: pathlib.Path,
+    format="bagit",
+    name_field="name",
 ):
-    with pathlib.Path(filename).open("a") as fp:
+    with manifest_path.open("a") as fp:
         match format:
             case "bagit":
                 for item in orchestrator.checksums:
@@ -560,7 +563,7 @@ def create_tar_from_iterators_and_orchestrator(
     dest_tar,
     orchestrator: TarOrchestrator,
 ):
-    # just in case: callbacks can obain the tar_fp from the orchestrator
+    # callbacks can otain the tar_fp from the orchestrator
     setattr(orchestrator, "dest_tar", dest_tar)
 
     try:
