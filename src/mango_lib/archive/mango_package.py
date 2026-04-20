@@ -180,7 +180,7 @@ def bag_tar(
 
 def package_dataset(
     file_iterator: Iterable,
-    dest_tar: iRODSDataObject | io.BufferedWriter,
+    dest_tar_object: iRODSDataObject | Path,
     base_path: str,  # to compute relative paths
     dataset_name: str = "dummy_dataset",
     folder_iterator: Iterable | None = None,
@@ -210,6 +210,8 @@ def package_dataset(
         orchestrator, manifest_path, last_good_write_path, alt_metadata_tar
     )
 
+    writing_mode = "w" if isinstance(dest_tar_object, iRODSDataObject) else "wb"
+    dest_tar = dest_tar_object.open(writing_mode)
     try:
         mango_tar.create_tar_from_iterators_and_orchestrator(
             object_iterator=files,
@@ -229,3 +231,6 @@ def package_dataset(
         raise e
     finally:
         dest_tar.close()
+        dest_tar_object.truncate(
+            orchestrator.last_good_write["tar_file_end"]
+        )  # to make sure the file ends well
