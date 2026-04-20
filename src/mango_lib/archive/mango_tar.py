@@ -2,6 +2,7 @@ import base64
 import datetime
 import functools
 import hashlib
+import io
 import json
 import pathlib
 import tarfile
@@ -11,7 +12,8 @@ from irods.collection import iRODSCollection
 from irods.data_object import iRODSDataObject
 
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 import humanize
 
@@ -92,6 +94,7 @@ class TaskProgressPart:
     def to_dict(self):
         return asdict(self)
 
+
 # from ..mango_flow_app import MFException
 
 """
@@ -103,6 +106,7 @@ class ManGOFlowTaskAbortException(Exception):
     pass
 
 
+@dataclass
 class TarInputItem:
     """
     A utility/abstract class that represents the input to read from in a normalized way.
@@ -111,128 +115,116 @@ class TarInputItem:
 
     """
 
-    # item:
-    # needs_checksum = False
-
-    def __init__(self, item, needs_checksum=False):
-        self.item = item
-        self.needs_checksum = needs_checksum
-        self._name = ""
-        self._size = 0
-        self._modified = 0.0
-        self._checksum = None
-        self._alt_name = ""
-        self.path = ""
-
-    @property
-    def name(self):
-        return self._name
+    item: Any  # specific type in subclasses
+    path: str = field(default="", init=False, repr=False)
+    needs_checksum: bool = False
+    rel_path: str = ""
+    prefix: str = ""
+    alt_prefix: str = ""
+    _name: str = field(default="", init=False, repr=False)
+    _size: int = field(default=0, init=False, repr=False)
+    _modified: float = field(default=0.0, init=False, repr=False)
+    _checksum: str | None = field(default=None, init=False, repr=False)
+    _alt_name: str = field(default="", init=False, repr=False)
 
     @property
-    def modified(self):
+    def name(self) -> str:
+        return str(self._name)
+
+    @name.setter
+    def name(self, _name):
+        _name = _name if isinstance(_name, pathlib.Path) else pathlib.PosixPath(_name)
+        self._name = (
+            _name if not self.rel_path else self.compute_relative(_name, self.prefix)
+        )
+
+    @property
+    def modified(self) -> float:
         return self._modified
 
     @property
-    def size(self):
+    def size(self) -> int:
         return self._size
 
     @property
-    def checksum(self):
+    def checksum(self) -> str:
         return self._checksum
-
-    @property
-    def alt_name(self):
-        return self._alt_name
 
     @checksum.setter
     def checksum(self, value):
         self._checksum = value
 
+    @property
+    def alt_name(self) -> str:
+        return str(self._alt_name)
+
+    @alt_name.setter
+    def alt_name(self, _alt_name):
+        self._alt_name = (
+            _alt_name
+            if not self.rel_path
+            else self.compute_relative(_alt_name, self.alt_prefix)
+        )
+
+    def compute_relative(
+        self, name: str, prefix: str | pathlib.PosixPath
+    ) -> pathlib.PosixPath:
+        if not isinstance(prefix, pathlib.PosixPath):
+            prefix = pathlib.PosixPath(prefix)
+        if not isinstance(name, pathlib.Path):
+            name = pathlib.PosixPath(name)
+        return prefix / name.relative_to(self.rel_path)
+
     def open_for_read(self):
         return None
 
 
+@dataclass
 class iRODSInputItem(TarInputItem):
-    def __init__(
-        self,
-        item: iRODSDataObject | iRODSCollection,
-        needs_checksum=False,
-        rel_path="",
-        prefix="",
-        alt_prefix="",
-    ):
-        super().__init__(item, needs_checksum)
-        self._name = (
-            item.path
-            if not rel_path
-            else str(
-                pathlib.PosixPath(prefix)
-                / pathlib.PosixPath(item.path).relative_to(rel_path)
-            )
-        )
-        self._alt_name = (
-            self._name
-            if not alt_prefix
-            else str(
-                pathlib.PosixPath(alt_prefix)
-                / pathlib.PosixPath(item.path).relative_to(rel_path)
-            )
-        )
-        self._size = item.size if isinstance(item, iRODSDataObject) else 0  # type: ignore
-        self._modified = item.modify_time.timestamp()  # type: ignore
-        if isinstance(item, iRODSDataObject) and item.checksum:  # type: ignore # maybe there is no need to do the expensive calculation?
-            self._checksum = base64.b64decode(item.checksum.replace("sha2:", "")).hex()  # type: ignore
+    item: iRODSDataObject | iRODSCollection
+
+    def __post_init__(self):
+        self.name = self.item.path
+        self.alt_name = self.item.path
+        self._size = self.item.size if isinstance(self.item, iRODSDataObject) else 0  # type: ignore
+        self._modified = self.item.modify_time.timestamp()  # type: ignore
+        if isinstance(self.item, iRODSDataObject) and self.item.checksum:  # type: ignore # maybe there is no need to do the expensive calculation?
+            self._checksum = base64.b64decode(self.item.checksum.replace("sha2:", "")).hex()  # type: ignore
             self.needs_checksum = False
-        self.path = item.path  # type: ignore
+        self.path = self.item.path  # type: ignore
 
     def open_for_read(self):
         return self.item.open("r")
 
 
+@dataclass
 class FileInputItem(TarInputItem):
     item: pathlib.Path  # | None = None
 
-    def __init__(
-        self,
-        item: pathlib.Path,
-        needs_checksum=False,
-        rel_path="",
-        prefix="",
-        alt_prefix="",
-    ):
-        super().__init__(item, needs_checksum)
-        self._name = (
-            str(item)
-            if not rel_path
-            else str(pathlib.PosixPath(prefix) / item.relative_to(rel_path))
-        )
-        self._alt_name = (
-            self._name
-            if not alt_prefix
-            else str(pathlib.PosixPath(alt_prefix) / item.relative_to(rel_path))
-        )
-        self._size = item.stat().st_size
-        self._modified = item.stat().st_mtime
+    def __post_init__(self):
+        self.name = self.item
+        self.alt_name = self.item
+        self._size = self.item.stat().st_size
+        self._modified = self.item.stat().st_mtime
         self._checksum = None
-        self.path = str(item)
+        self.path = str(self.item)
 
     def open_for_read(self):
         return self.item.open("rb")
 
 
+@dataclass
 class BytesInputItem(TarInputItem):
-    def __init__(
-        self, name, item, needs_checksum=False, rel_path="", prefix="", alt_prefix=""
-    ):
-        super().__init__(item, needs_checksum)
-        if rel_path:
-            name = str(pathlib.PosixPath(name).relative_to(rel_path))
-        self._name = name if not prefix else f"{prefix}/{name}"
-        self._alt_name = self._name if not alt_prefix else f"{alt_prefix}/{name}"
-        self._size = len(item)
+    item: io.BytesIO
+    path: str
+
+    def __post_init__(self):
+        self.name = self.path
+        self.alt_name = self.path
+        self._size = len(self.item)
         self._modified = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
-        if needs_checksum:
-            self._checksum = hashlib.sha256(item).hexdigest()
+        if self.needs_checksum:
+            self._checksum = hashlib.sha256(self.item).hexdigest()
 
 
 # ## Modified code that came originally from ChatGPT via Peter Verraedt
@@ -400,7 +392,7 @@ class TarOrchestrator:
         self.overall_size_progress.current_time = (
             self.overall_file_progress.current_time
         ) = time.time()
-        
+
         # now call the tar_me_too_partials
         # guards
         for name, guard in self.callbacks["guard"].items():
@@ -416,7 +408,7 @@ class TarOrchestrator:
         for name in callbacks:
             print(f"Calling file end callback {name=} getting {item.name=}")
             self.callbacks["file_end"][name](self, item)
-    
+
         self.last_good_write = {
             "path": item.path,
             "tar_file_end": dest_tar.tell(),
