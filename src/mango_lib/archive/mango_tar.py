@@ -5,11 +5,13 @@ import hashlib
 import io
 import json
 import pathlib
+import random
 import tarfile
 import time
 
 from irods.collection import iRODSCollection
 from irods.data_object import iRODSDataObject
+from typing import Iterator
 
 import logging
 from dataclasses import asdict, dataclass, field
@@ -611,3 +613,72 @@ def create_tar_from_iterators_and_orchestrator(
         # before we really exit, save some vital info like manifest and last good write
         orchestrator.at_exception()
         raise ValueError("Abnormal termination")
+
+
+def restartable_tar(
+    object_iterator: Iterator[iRODSDataObject | pathlib.Path],
+    collection_iterator: Iterator[iRODSCollection],
+    dest_tar_object: iRODSDataObject | pathlib.Path,
+    orchestrator: TarOrchestrator | None = None,
+    last_good_write: dict | None = None,
+    dataset_name: str = "",
+    local_folder: pathlib.Path = pathlib.Path("."),
+) -> tuple[bool, pathlib.Path]:
+    ok = False
+    dest_tar_irods = isinstance(dest_tar_object, iRODSDataObject)
+    match last_good_write:
+        case {"path": str(path), "tar_file_end": int(tar_file_end)}:
+            # loop over iterators
+            last_good_write_found = False
+            for file in object_iterator:
+                if file.path == path:
+                    last_good_write_found = True
+                    break
+            if not last_good_write_found:
+                for coll in collection_iterator:
+                    if coll.path == path:
+                        last_good_write_found = True
+                        break
+            if not last_good_write_found:
+                raise ValueError("Cannot find the last good write!!!!")
+            # open tar in append mode and seek
+            open_mode = "a" if dest_tar_irods else "ab"
+            dest_tar = dest_tar_irods.open(open_mode)
+            dest_tar.seek(tar_file_end)
+        case _:
+            # open tar in write mode
+            open_mode = "w" if dest_tar_irods else "wb"
+            dest_tar = dest_tar_irods.open(open_mode)
+
+    dataset_name = dataset_name or random.choice(
+        ["smarty", "dummy", "juicy", "fruity", "cloudy"]
+    )
+    last_good_write_path = local_folder / (dataset_name + "_last_good_write.json")
+
+    if not isinstance(orchestrator, TarOrchestrator):
+        orchestrator = TarOrchestrator()  # initializing!
+
+    def log_good_write(orchestrator: TarOrchestrator):
+        with last_good_write_path.open("w") as last_good_write_fp:
+            json.dump(orchestrator.last_good_write, last_good_write_fp)
+
+    orchestrator.add_callback("abort", "last-good-write", log_good_write)
+    orchestrator.add_callback("exception", "last-good-write", log_good_write)
+
+    # add callback to orchestrator, initialize if it does not exist
+    try:
+        create_tar_from_iterators_and_orchestrator(
+            object_iterator,
+            collection_iterator,
+            dest_tar,
+            orchestrator,
+        )
+    except Exception as e:
+        print(f"Caught error, check last good write at {last_good_write_path}!")
+        ok = False
+        raise e
+    finally:
+        dest_tar.close()
+        if dest_tar_irods:
+            dest_tar_object.truncate(orchestrator.last_good_write["tar_file_end"])
+        return (ok, last_good_write_path)

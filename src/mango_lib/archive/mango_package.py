@@ -22,11 +22,9 @@ from mango_lib.archive import mango_tar
 
 MANIFEST_PREFIX = "data"
 MANIFEST_NAME = "manifest-sha256.txt"
-LAST_GOOD_WRITE = "last-good-write.json"
 LOCAL_FOLDER = Path(".")
 
 MANIFEST_PATH = LOCAL_FOLDER / MANIFEST_NAME
-LAST_GOOD_WRITE_PATH = LOCAL_FOLDER / LAST_GOOD_WRITE
 
 
 def tar_prefix(dataset):
@@ -72,7 +70,6 @@ def add_irods_metadata_to_tar(
 def packaging_orchestrator(
     orchestrator: mango_tar.TarOrchestrator = None,
     manifest_path: Path = MANIFEST_PATH,
-    last_good_write_path: Path = LAST_GOOD_WRITE_PATH,
     metadata_tar: io.BufferedWriter | None = None,
 ):
 
@@ -104,17 +101,8 @@ def packaging_orchestrator(
     orchestrator.add_callback(
         "collection_item", "add_collection_metadata", add_metadata_partial
     )
-
-    def log_good_write(orchestrator: mango_tar.TarOrchestrator):
-        last_good_write = json.dumps(orchestrator.last_good_write)
-        with last_good_write_path.open("w") as last_good_write_fp:
-            last_good_write_fp.write(last_good_write)
-
     orchestrator.add_callback("abort", "flush-checksums", flush_checksums)
-    orchestrator.add_callback("abort", "last-good-write", log_good_write)
-
     orchestrator.add_callback("exception", "flush-checksums", flush_checksums)
-    orchestrator.add_callback("exception", "last-good-write", log_good_write)
 
 
 def parse_file_iterator(
@@ -178,6 +166,7 @@ def bag_tar(
     mango_tar.add_bytes_item_to_tar(orchestrator.dest_tar, tar_input_item)
 
 
+# @todo make restartable as well
 def package_dataset(
     file_iterator: Iterable,
     dest_tar_object: iRODSDataObject | Path,
@@ -188,12 +177,12 @@ def package_dataset(
     local_folder: Path = LOCAL_FOLDER,
     manifest_name: str = MANIFEST_NAME,
     add_metadata_tar: bool = False,
+    last_good_write: dict | None = None,
     # rocrate_source=None,
-):
+) -> bool:
     manifest_path = local_folder / manifest_name
     with manifest_path.open("w"):
         pass
-    last_good_write_path = local_folder / LAST_GOOD_WRITE
 
     files = parse_file_iterator(file_iterator, base_path, dataset_name)
     collections = parse_folder_iterator(folder_iterator, base_path, dataset_name)
@@ -206,31 +195,23 @@ def package_dataset(
         alt_metadata_tar = None
 
     # set up orchestrator, from scratch if none is provided
-    orchestrator = packaging_orchestrator(
-        orchestrator, manifest_path, last_good_write_path, alt_metadata_tar
-    )
+    orchestrator = packaging_orchestrator(orchestrator, manifest_path, alt_metadata_tar)
 
-    writing_mode = "w" if isinstance(dest_tar_object, iRODSDataObject) else "wb"
-    dest_tar = dest_tar_object.open(writing_mode)
+    ok = False
+    last_good_write_path = None
     try:
-        mango_tar.create_tar_from_iterators_and_orchestrator(
+        ok, last_good_write_path = mango_tar.restartable_tar(
             object_iterator=files,
             collection_iterator=collections,
-            dest_tar=dest_tar,
+            dest_tar_object=dest_tar_object,
             orchestrator=orchestrator,
+            last_good_write=last_good_write,
+            dataset_name=dataset_name,
+            local_folder=local_folder,
         )
-        if alt_metadata_tar is not None:
-            alt_metadata_tar.close()
-
-        # add manifest and bagit
-        bag_tar(orchestrator, dataset_name, manifest_path, local_folder)
-        # if rocrate_source is not None:
-        #     add_rocrate(orchestrator, rocrate_source, MANIFEST_NAME) ??
     except Exception as e:
-        print(f"Caught error, check last good write at {last_good_write_path}!")
         raise e
     finally:
-        dest_tar.close()
-        dest_tar_object.truncate(
-            orchestrator.last_good_write["tar_file_end"]
-        )  # to make sure the file ends well
+        if alt_metadata_tar is not None:
+            alt_metadata_tar.close()
+        return ok, last_good_write_path
