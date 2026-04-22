@@ -67,9 +67,40 @@ def add_irods_metadata_to_tar(
         mango_tar.add_bytes_item_to_tar(alt_tar, tar_input_item)
 
 
+def bag_tar(
+    orchestrator: mango_tar.TarOrchestrator,
+    dataset_name: str,
+    manifest_path: Path = MANIFEST_PATH,
+    rel_path: str = str(LOCAL_FOLDER),
+):
+    manifest_tar_input = mango_tar.FileInputItem(
+        manifest_path, rel_path=rel_path, prefix=f"{dataset_name}/bag"
+    )
+    with manifest_path.open("rb") as manifest_fp:
+        mango_tar.stream_fp_to_tar(
+            manifest_fp,
+            input_item=manifest_tar_input,
+            tar_dest=orchestrator.dest_tar,
+            read_buffer_size=1048576,
+            orchestrator=orchestrator,
+        )
+    orchestrator.at_current_file_end(
+        item=manifest_tar_input, dest_tar=orchestrator.dest_tar, callbacks=None
+    )
+    bagit_contents = "BagIt version 0.97\nTag-File-Character-Encoding: UTF-8\n".encode()
+    bagit_item = mango_tar.BytesInputItem(
+        bagit_contents, needs_checksum=False, path=f"{dataset_name}/bag/bagit.txt"
+    )
+    mango_tar.add_bytes_item_to_tar(orchestrator.dest_tar, bagit_item)
+    orchestrator.at_current_file_end(
+        item=bagit_item, dest_tar=orchestrator.dest_tar, callbacks=None
+    )
+
+
 def packaging_orchestrator(
     orchestrator: mango_tar.TarOrchestrator = None,
     manifest_path: Path = MANIFEST_PATH,
+    dataset_name: str = "",
     metadata_tar: io.BufferedWriter | None = None,
 ):
 
@@ -77,19 +108,31 @@ def packaging_orchestrator(
         orchestrator = mango_tar.TarOrchestrator()  # initializing!
 
     # CHECKSUMS FOR MANIFEST
-    orchestrator.add_callback("delay_point", "checksum-save", mango_tar.record_checksum)
     orchestrator.add_callback("file_end", "checksum-save", mango_tar.record_checksum)
 
     flush_checksums = functools.partial(
         mango_tar.flush_checksums,
-        filename=manifest_path,
+        manifest_path=manifest_path,
         format="bagit",
         name_field="alt_name",
     )
+    orchestrator.add_callback("delay_point", "update-manifest", flush_checksums)
+
     orchestrator.add_callback(
         "end",
-        "end-manifest-bagit",
+        "finish-manifest",
         flush_checksums,
+    )
+
+    orchestrator.add_callback(
+        "end",
+        "make-bagit",
+        functools.partial(
+            bag_tar,
+            dataset_name=dataset_name,
+            manifest_path=manifest_path,
+            rel_path=str(manifest_path.parent),
+        ),
     )
 
     # add metadata
@@ -103,6 +146,8 @@ def packaging_orchestrator(
     )
     orchestrator.add_callback("abort", "flush-checksums", flush_checksums)
     orchestrator.add_callback("exception", "flush-checksums", flush_checksums)
+
+    return orchestrator
 
 
 def parse_file_iterator(
@@ -142,30 +187,6 @@ def parse_folder_iterator(
         )
 
 
-def bag_tar(
-    orchestrator: mango_tar.TarOrchestrator,
-    dataset_name: str,
-    manifest_path: Path = MANIFEST_PATH,
-    rel_path: str = str(LOCAL_FOLDER),
-):
-    manifest_tar_input = mango_tar.FileInputItem(
-        manifest_path, rel_path=rel_path, prefix=tar_prefix(dataset_name)
-    )
-    with manifest_path.open("rb") as manifest_fp:
-        mango_tar.stream_fp_to_tar(
-            manifest_fp,
-            input_item=manifest_tar_input,
-            tar_dest=orchestrator.dest_tar,
-            read_buffer_size=1048576,
-            orchestrator=orchestrator,
-        )
-    bagit_contents = "BagIt version 0.97\nTag-File-Character-Encoding: UTF-8\n".encode()
-    tar_input_item = mango_tar.BytesInputItem(
-        bagit_contents, needs_checksum=False, path=f"{dataset_name}/bag/bagit.txt"
-    )
-    mango_tar.add_bytes_item_to_tar(orchestrator.dest_tar, tar_input_item)
-
-
 # @todo make restartable as well
 def package_dataset(
     file_iterator: Iterable,
@@ -179,6 +200,7 @@ def package_dataset(
     add_metadata_tar: bool = False,
     last_good_write: dict | None = None,
     # rocrate_source=None,
+    return_orchestrator: bool = False,
 ) -> bool:
     manifest_path = local_folder / manifest_name
     with manifest_path.open("w"):
@@ -195,23 +217,21 @@ def package_dataset(
         alt_metadata_tar = None
 
     # set up orchestrator, from scratch if none is provided
-    orchestrator = packaging_orchestrator(orchestrator, manifest_path, alt_metadata_tar)
+    orchestrator = packaging_orchestrator(
+        orchestrator=orchestrator,
+        manifest_path=manifest_path,
+        dataset_name=dataset_name,
+        metadata_tar=alt_metadata_tar,
+    )
 
-    ok = False
-    last_good_write_path = None
-    try:
-        ok, last_good_write_path = mango_tar.restartable_tar(
-            object_iterator=files,
-            collection_iterator=collections,
-            dest_tar_object=dest_tar_object,
-            orchestrator=orchestrator,
-            last_good_write=last_good_write,
-            dataset_name=dataset_name,
-            local_folder=local_folder,
-        )
-    except Exception as e:
-        raise e
-    finally:
-        if alt_metadata_tar is not None:
-            alt_metadata_tar.close()
-        return ok, last_good_write_path
+    restart_output = mango_tar.restartable_tar(
+        object_iterator=files,
+        collection_iterator=collections,
+        dest_tar_object=dest_tar_object,
+        orchestrator=orchestrator,
+        last_good_write=last_good_write,
+        local_folder=local_folder,
+    )
+    if alt_metadata_tar is not None:
+        alt_metadata_tar.close()
+    return (restart_output, orchestrator) if return_orchestrator else (restart_output,)

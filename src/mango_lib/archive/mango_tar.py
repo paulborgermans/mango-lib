@@ -621,39 +621,41 @@ def restartable_tar(
     dest_tar_object: iRODSDataObject | pathlib.Path,
     orchestrator: TarOrchestrator | None = None,
     last_good_write: dict | None = None,
-    dataset_name: str = "",
+    skip_one_file: bool = False,
     local_folder: pathlib.Path = pathlib.Path("."),
 ) -> tuple[bool, pathlib.Path]:
-    ok = False
     dest_tar_irods = isinstance(dest_tar_object, iRODSDataObject)
     match last_good_write:
         case {"path": str(path), "tar_file_end": int(tar_file_end)}:
             # loop over iterators
             last_good_write_found = False
             for file in object_iterator:
+                # go through the files that were already processed
                 if file.path == path:
                     last_good_write_found = True
                     break
             if not last_good_write_found:
+                # if files have been consumed and we still didn't find last good write
                 for coll in collection_iterator:
                     if coll.path == path:
                         last_good_write_found = True
                         break
+                if skip_one_file:  # skip the bad collection
+                    next(collection_iterator)
+            elif skip_one_file:  # skip the bad object
+                next(object_iterator)
             if not last_good_write_found:
                 raise ValueError("Cannot find the last good write!!!!")
             # open tar in append mode and seek
             open_mode = "a" if dest_tar_irods else "ab"
-            dest_tar = dest_tar_irods.open(open_mode)
-            dest_tar.seek(tar_file_end)
+            dest_tar = dest_tar_object.open(open_mode)
+            # dest_tar.seek(tar_file_end)
         case _:
             # open tar in write mode
             open_mode = "w" if dest_tar_irods else "wb"
-            dest_tar = dest_tar_irods.open(open_mode)
+            dest_tar = dest_tar_object.open(open_mode)
 
-    dataset_name = dataset_name or random.choice(
-        ["smarty", "dummy", "juicy", "fruity", "cloudy"]
-    )
-    last_good_write_path = local_folder / (dataset_name + "_last_good_write.json")
+    last_good_write_path = local_folder / "last_good_write.json"
 
     if not isinstance(orchestrator, TarOrchestrator):
         orchestrator = TarOrchestrator()  # initializing!
@@ -673,12 +675,14 @@ def restartable_tar(
             dest_tar,
             orchestrator,
         )
+        if last_good_write_path.exists():
+            last_good_write_path.unlink()
+        output = {"ok": True}
     except Exception as e:
-        print(f"Caught error, check last good write at {last_good_write_path}!")
-        ok = False
-        raise e
+        print(f"Caught error {e}, check last good write at {last_good_write_path}!")
+        output = {"ok": False, "last_good_write": last_good_write_path, "error": e}
     finally:
         dest_tar.close()
         if dest_tar_irods:
             dest_tar_object.truncate(orchestrator.last_good_write["tar_file_end"])
-        return (ok, last_good_write_path)
+    return output
