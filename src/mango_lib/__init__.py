@@ -1,1 +1,1 @@
-from .irods.auth import get_zone_operator_session
+from mango_lib.irods.auth import get_zone_operator_session

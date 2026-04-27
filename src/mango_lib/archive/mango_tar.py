@@ -3,17 +3,15 @@ import datetime
 import functools
 import hashlib
 import json
+import logging
 import pathlib
 import tarfile
 import time
-
-from irods.collection import iRODSCollection
-from irods.data_object import iRODSDataObject
-
-import logging
 from dataclasses import asdict, dataclass
 
 import humanize
+from irods.collection import iRODSCollection
+from irods.data_object import iRODSDataObject
 
 logger = logging.Logger(__name__)
 
@@ -91,6 +89,7 @@ class TaskProgressPart:
 
     def to_dict(self):
         return asdict(self)
+
 
 # from ..mango_flow_app import MFException
 
@@ -400,7 +399,7 @@ class TarOrchestrator:
         self.overall_size_progress.current_time = (
             self.overall_file_progress.current_time
         ) = time.time()
-        
+
         # now call the tar_me_too_partials
         # guards
         for name, guard in self.callbacks["guard"].items():
@@ -416,7 +415,7 @@ class TarOrchestrator:
         for name in callbacks:
             print(f"Calling file end callback {name=} getting {item.name=}")
             self.callbacks["file_end"][name](self, item)
-    
+
         self.last_good_write = {
             "path": item.path,
             "tar_file_end": dest_tar.tell(),
