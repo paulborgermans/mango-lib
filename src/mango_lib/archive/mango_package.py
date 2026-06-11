@@ -152,7 +152,7 @@ def packaging_orchestrator(
 
 def parse_file_iterator(
     file_iterator: Iterable, rel_path: str, dataset_name: str
-) -> Generator[mango_tar.TarInputItem]:
+) -> Generator[mango_tar.TarInputItem, None, None]:
     for file in file_iterator:
         if isinstance(file, mango_tar.TarInputItem):
             yield file
@@ -173,7 +173,7 @@ def parse_file_iterator(
 
 def parse_folder_iterator(
     folder_iterator: Iterable, rel_path: str, dataset_name: str
-) -> Generator[mango_tar.iRODSInputItem]:
+) -> Generator[mango_tar.iRODSInputItem, None, None]:
     # if isinstance(folder_iterator, iRODSTarInputJSONLReader):
     #     return folder_iterator.get_next_object()
     for folder in folder_iterator:
