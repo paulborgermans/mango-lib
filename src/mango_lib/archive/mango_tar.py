@@ -4,20 +4,17 @@ import functools
 import hashlib
 import io
 import json
+import logging
 import pathlib
 import random
 import tarfile
 import time
-
-from irods.collection import iRODSCollection
-from irods.data_object import iRODSDataObject
-from typing import Iterator
-
-import logging
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Iterator
 
 import humanize
+from irods.collection import iRODSCollection
+from irods.data_object import iRODSDataObject
 
 logger = logging.Logger(__name__)
 
