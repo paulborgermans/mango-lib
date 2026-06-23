@@ -223,3 +223,9 @@ def format_timestamp(ts: int | float, format: str = "%Y-%m-%d %H:%M:%S") -> str:
         return datetime.datetime.fromtimestamp(ts).isoformat(timespec="milliseconds")
     return datetime.datetime.fromtimestamp(ts).strftime(format)
 
+@MangoJinjaExtension.template_filter()
+def format_datetime(
+    value: datetime.datetime, format="%Y-%m-%d %H:%M:%S", local_timezone="Europe/Brussels"
+):
+    
+    return value.astimezone(pytz.timezone(local_timezone)).strftime(format)
