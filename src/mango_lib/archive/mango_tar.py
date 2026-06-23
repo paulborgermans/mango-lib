@@ -6,7 +6,6 @@ import io
 import json
 import logging
 import pathlib
-import random
 import tarfile
 import time
 from dataclasses import asdict, dataclass, field

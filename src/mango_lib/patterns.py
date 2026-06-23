@@ -25,10 +25,11 @@ def translate_mango_moustache_regex(input_string: str) -> str:
     """
 
     def translate_moustache_single_match(m: re.Match):
-        # the matched substring, there is only one if we are called, is split in two parts:
-        # the variable name and the regex expression
-        # if no regex expression is provided, a default one is used
-        # the default regex expression is r"[\w\-\s\.]+"
+        """the matched substring, there is only one if we are called, is split in two parts:
+        the variable name and the regex expression
+        if no regex expression is provided, a default one is used
+        the default regex expression is r"[\w\-\s\.]+"
+        """
         variable_name, *regex_expression = m.group(1).split(":", 1)
         regex_expression = regex_expression[0] if regex_expression else r"[\w\.\-\s]+"
         # stripped versions of the variable name and regex expression.
@@ -38,7 +39,7 @@ def translate_mango_moustache_regex(input_string: str) -> str:
     return re.sub(r"{{([^({{)]+)}}", translate_moustache_single_match, input_string)
 
 
-def mango_flow_regex_search(mango_regex_pattern: str, input_string: str) -> dict | None:
+def mango_regex_search(mango_regex_pattern: str, input_string: str) -> dict | None:
     """
     The mango_regex_pattern can be full python regex patterns or te simpler moustache syntax.
     If the moustache syntax is used, it will be transformed internally into a full regex pattern.
@@ -48,7 +49,7 @@ def mango_flow_regex_search(mango_regex_pattern: str, input_string: str) -> dict
         return result.groupdict()
     # if no match is found, return None
     # this is the same as returning an empty dict, but None is more explicit
-    return {}  # @tODO
+    return None
 
 
 def get_sub_paths_with_positions(path: str) -> dict:
@@ -67,12 +68,12 @@ def get_sub_paths_with_positions(path: str) -> dict:
     return sub_paths_with_last_part_positions
 
 
-def mango_flow_regex_search_path(
+def mango_regex_search_path(
     mango_regex_pattern: str,
     path: str,
 ) -> dict[str, str] | None:
     r"""
-    Like `mango_flow_regex_search`, but specifically designed for path-like strings for which a sub path
+    Like `mango_regex_search`, but specifically designed for path-like strings for which a sub path
     is to be used as well (for example to fetch metadata).
 
     It will return a dict with the specified variable names as keys and as

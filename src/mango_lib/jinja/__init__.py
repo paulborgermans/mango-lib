@@ -33,6 +33,7 @@ import binascii
 import datetime
 import os
 import re
+import zoneinfo
 from typing import Callable, Iterable
 
 import nh3  # for html and js escape untrusted content
@@ -41,6 +42,8 @@ from irods.data_object import iRODSDataObject
 from irods.meta import iRODSMeta
 from jinja2 import Environment
 from jinja2.ext import Extension
+from jinja2.filters import do_filesizeformat
+from markupsafe import Markup
 
 
 class MangoJinjaExtension(Extension):
@@ -223,9 +226,21 @@ def format_timestamp(ts: int | float, format: str = "%Y-%m-%d %H:%M:%S") -> str:
         return datetime.datetime.fromtimestamp(ts).isoformat(timespec="milliseconds")
     return datetime.datetime.fromtimestamp(ts).strftime(format)
 
+
 @MangoJinjaExtension.template_filter()
 def format_datetime(
-    value: datetime.datetime, format="%Y-%m-%d %H:%M:%S", local_timezone="Europe/Brussels"
+    value: datetime.datetime,
+    format="%Y-%m-%d %H:%M:%S",
+    local_timezone="Europe/Brussels",
 ):
-    
-    return value.astimezone(pytz.timezone(local_timezone)).strftime(format)
+
+    return value.astimezone(zoneinfo.ZoneInfo(local_timezone)).strftime(format)
+
+
+@MangoJinjaExtension.template_filter()
+def mango_filesizeformat(value, binary=False, wrap_element="span"):
+    """Custom filesizeformat filter that returns a span
+    with a title attribute for the full size in bytes."""
+    return Markup(
+        f'<{wrap_element} title="{value} bytes">{do_filesizeformat(value, binary=binary)}</{wrap_element}>'
+    )
