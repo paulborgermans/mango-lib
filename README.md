@@ -30,7 +30,7 @@ Requirements: `uv` and `pytest`
 - From the top level run:
 
 ```bash
-uv run pytest -v
+uv run pytest -v -s
 ```
 
 
