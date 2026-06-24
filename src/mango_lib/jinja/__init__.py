@@ -169,6 +169,8 @@ def bleach_clean(suspect: str, **kwargs) -> str:
 
     The name bleach_clean is for BC when it was using
     the now unsupported bleach library. `nh3` is rust based and much faster too"""
+    if "tags" in kwargs:
+        kwargs["tags"] = set(kwargs["tags"])
     if type(suspect) is str:
         return nh3.clean(suspect, **kwargs)
     else:
