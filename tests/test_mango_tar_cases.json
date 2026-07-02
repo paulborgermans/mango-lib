@@ -1,0 +1,69 @@
+[ {
+    "name": "simple_data",
+    "input_data": "simple_data/data",
+    "manifest": "simple_data/manifest_simple_data.txt",
+    "dir": "simple_data",
+    "input_data_location": ["local", "irods"],
+    "tar_location": ["local", "irods"]
+  },
+
+  {
+    "name": "strange_characters_data",
+    "input_data": "strange_characters_data/data",
+    "manifest": "strange_characters_data/manifest_strange_characters_data.txt",
+    "dir": "strange_characters",
+    "input_data_location": ["local", "irods"],
+    "tar_location": ["local", "irods"]
+
+
+  },
+  {
+    "name": "nested_data",
+    "input_data": "nested_data/data",
+    "manifest": "nested_data/manifest_nested_data.txt",
+    "dir": "nested_data",
+    "input_data_location": ["local", "irods"],
+    "tar_location": ["local", "irods"]
+
+  },
+  {
+    "name": "empty_folder_data",
+    "input_data": "empty_folder_data/data",
+    "manifest": "empty_folder_data/manifest_empty_folder_data.txt",
+    "dir": "empty_folder_data",
+    "input_data_location": ["local", "irods"],
+    "tar_location": ["local", "irods"]
+
+  },
+  {
+    "name": "simple_data_with_metadata",
+    "input_data": "simple_data_with_metadata/data",
+    "manifest": "simple_data_with_metadata/manifest_simple_data_with_metadata.txt",
+    "dir": "simple_data_with_metadata",
+    "input_data_location": ["irods"],
+    "tar_location": ["irods"]
+
+
+  },
+  {
+    "name": "nested_data_with_metadata",
+    "input_data": "nested_data_with_metadata/data",
+    "manifest": "nested_data_with_metadata/manifest_nested_data_with_metadata.txt",
+    "dir": "nested_data_with_metadata",
+    "input_data_location": ["irods"],
+    "tar_location": ["irods"]
+
+  },
+  {
+    "name": "empty_folder_data_with_metadata",
+    "input_data": "empty_folder_data_with_metadata/data",
+    "manifest": "empty_folder_data_with_metadata/manifest_empty_folder_data_with_metadata.txt",
+    "dir": "empty_folder_data_with_metadata",
+    "input_data_location": ["irods"],
+    "tar_location": ["irods"]
+
+  }
+  
+  
+
+]

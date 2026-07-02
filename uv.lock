@@ -66,6 +66,7 @@ source = { editable = "." }
 dependencies = [
     { name = "humanize" },
     { name = "mango-mdconverter" },
+    { name = "pytest-cases" },
     { name = "python-irodsclient" },
 ]
 
@@ -78,6 +79,7 @@ dev = [
 requires-dist = [
     { name = "humanize", specifier = ">=4.15.0" },
     { name = "mango-mdconverter", specifier = ">=0.0.10" },
+    { name = "pytest-cases", specifier = ">=3.10.1" },
     { name = "python-irodsclient", specifier = ">=3.2.0" },
 ]
 
