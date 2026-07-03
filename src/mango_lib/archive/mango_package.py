@@ -201,7 +201,7 @@ def package_dataset(
     last_good_write: dict | None = None,
     # rocrate_source=None,
     return_orchestrator: bool = False,
-) -> bool:
+) -> tuple:
     manifest_path = local_folder / manifest_name
     with manifest_path.open("w"):
         pass
@@ -234,4 +234,8 @@ def package_dataset(
     )
     if alt_metadata_tar is not None:
         alt_metadata_tar.close()
-    return (restart_output, orchestrator) if return_orchestrator else (restart_output,)
+    return (
+        (restart_output, orchestrator)
+        if return_orchestrator
+        else (restart_output, None)
+    )
