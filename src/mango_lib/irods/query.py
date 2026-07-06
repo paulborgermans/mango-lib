@@ -58,4 +58,4 @@ def genquery2_select_dict(
             for record in q_result
         ]
     else:
-        raise (ValueError())
+        raise (ValueError("The number of columns returned from the query does not match the number of select_columns provided."))

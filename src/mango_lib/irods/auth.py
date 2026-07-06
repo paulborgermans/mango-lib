@@ -42,7 +42,7 @@ get_zone_operator_session: ZoneOperatorSessionFunction = (
     simple_get_zone_operator_session
 )
 
-env_var = "GET_ZONE_OPERATOR_SESSION_FUNCTION"
+env_var = "MANGO_GET_ZONE_OPERATOR_SESSION_FUNCTION"
 module_name, func_name = os.getenv(env_var, ":").split(":")
 if module_name and func_name:
     module = importlib.import_module(module_name)
