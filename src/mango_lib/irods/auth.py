@@ -48,7 +48,7 @@ if module_name and func_name:
     module = importlib.import_module(module_name)
     get_zone_operator_session = getattr(module, func_name)
 else:
-    logging.warning(
+    logging.debug(
         f"Failed to import get_zone_operator_session from environment variable "
         f"{env_var}, falling back to simple implementation."
     )

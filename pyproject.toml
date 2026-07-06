@@ -1,3 +1,4 @@
+
 [project]
 name = "mango-lib"
 version = "0.1.1"
@@ -9,12 +10,23 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "click>=8.1",
     "humanize>=4.15.0",
     "jinja2>=3.1.6",
     "mango-mdconverter>=0.0.10",
     "nh3>=0.3.5",
     "python-irodsclient>=3.2.0",
+    "rich>=15.0.0",
 ]
+
+[project.scripts]
+mango = "mango_lib.cli:mango"
+
+[project.optional-dependencies]
+mango-mdconverter = [
+    "mango-mdconverter>=0.0.10",
+]
+
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12.0"]
