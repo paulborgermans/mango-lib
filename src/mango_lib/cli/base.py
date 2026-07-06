@@ -40,8 +40,8 @@ def _load_plugins() -> None:
         try:
             plugin = ep.load()
             if callable(plugin):
-                plugin()  # Call the plugin register() function to register its commands
-        except Exception as exc:  # noqa: BLE001
+                plugin()  # Call the plugin declared function to register its commands
+        except Exception as exc:
             click.echo(f"Failed to load plugin {ep.name}: {exc}", err=True)
 
 
