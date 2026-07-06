@@ -608,7 +608,7 @@ def create_tar_from_iterators_and_orchestrator(
     except:  # noqa: E722
         # before we really exit, save some vital info like manifest and last good write
         orchestrator.at_exception()
-        raise ValueError("Abnormal termination")
+        raise
 
 
 def restartable_tar(
@@ -619,7 +619,7 @@ def restartable_tar(
     last_good_write: dict | None = None,
     skip_one_file: bool = False,
     local_folder: pathlib.Path = pathlib.Path("."),
-) -> tuple[bool, pathlib.Path]:
+) -> dict:
     dest_tar_irods = isinstance(dest_tar_object, iRODSDataObject)
     match last_good_write:
         case {"path": str(path), "tar_file_end": int(tar_file_end)}:
