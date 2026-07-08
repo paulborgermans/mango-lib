@@ -1,14 +1,13 @@
-import glob
 import hashlib
 import os
-from pathlib import Path
 import random
 import string
+from pathlib import Path
+
+from irods.column import Criterion
 from irods.exception import DataObjectDoesNotExist
 from irods.helpers import make_session
-from irods.column import Criterion
-from irods.models import DataObject, Collection
-
+from irods.models import Collection, DataObject
 
 INPUT_DATA = Path("tests/input_data")
 
@@ -49,9 +48,6 @@ def create_contract_local(data_dir, base_dir, contract):
         )
 
 
-
-
-
 def create_manifest_local(directory_to_read, directory_to_write, manifest_name):
 
     print(f"Creating {manifest_name} locally.")
@@ -74,38 +70,38 @@ def create_contract_irods(session, input_dir, base_dir):
                 f.write(data_object.path.encode())
                 f.write("\n".encode())
 
+
 def create_manifest_and_contract_irods(
     session, collection_to_read, collection_to_write, manifest_name
 ):
     print(f"Creating {manifest_name} in iRODS.")
-   
+
     coll = session.collections.get(collection_to_read)
 
-
     manifest = session.data_objects.open(f"{collection_to_write}/{manifest_name}", "w")
-    contract_data_objects =  session.data_objects.open(f"{collection_to_write}/list_of_files.txt", "w")
-    contract_collections =  session.data_objects.open(f"{collection_to_write}/list_of_directories.txt", "w")
-    
+    contract_data_objects = session.data_objects.open(
+        f"{collection_to_write}/list_of_files.txt", "w"
+    )
+    contract_collections = session.data_objects.open(
+        f"{collection_to_write}/list_of_directories.txt", "w"
+    )
 
     try:
-        contract_collections.write(f"{coll.path}\n".encode()) # add the root folder 
+        contract_collections.write(f"{coll.path}\n".encode())  # add the root folder
 
-        for _ , collections, data_objects in coll.walk():
+        for _, collections, data_objects in coll.walk():
             for data_object in data_objects:
                 with data_object.open("r") as f:
                     checksum = hashlib.sha256(f.read()).hexdigest()
-                payload = f"{checksum} {data_object.size} {data_object.path}\n" #TODO: change this to folder/bag/data/
+                payload = f"{checksum} {data_object.size} {data_object.path}\n"  # TODO: change this to folder/bag/data/
                 manifest.write(bytes(payload, "utf-8"))
-                contract_data_objects.write(f"{data_object.path}\n".encode())                
+                contract_data_objects.write(f"{data_object.path}\n".encode())
             for collection in collections:
                 contract_collections.write(f"{collection.path}\n".encode())
     finally:
         manifest.close()
         contract_data_objects.close()
-        contract_collections.close() 
-        
-
-
+        contract_collections.close()
 
 
 def create_random_file(path: str, size_in_bytes: int):
@@ -127,6 +123,7 @@ def setup_case_simple_data(folder_name):
         create_random_file(filename, 10)
     create_manifest_local(data_dir, base_dir, "manifest_simple_data.txt")
     create_contract_local(data_dir, base_dir, "list_of_files.txt")
+
 
 def setup_case_strange_characters_data(folder_name):
     """Create data and manifest for case strange characters local to local."""
@@ -202,7 +199,11 @@ def upload_directory_to_iRODS(session, source, destination, suffix=""):
     source = Path(source)
     root = f"{destination}/{source.name}{suffix}"
     session.collections.create(root)
-    for item in (p for p in source.rglob("*") if not p.name.startswith(("manifest", "list_of_files"))):
+    for item in (
+        p
+        for p in source.rglob("*")
+        if not p.name.startswith(("manifest", "list_of_files"))
+    ):
         relative = item.relative_to(source)
         irods_path = f"{root}/{relative.as_posix()}"
         if item.is_dir():
@@ -212,12 +213,13 @@ def upload_directory_to_iRODS(session, source, destination, suffix=""):
 
 
 def setup_case_data_irods(
-    session, folder_name: string, test_collection: string, suffix=""
+    session, folder_name: str, test_collection: str, suffix: str = ""
 ):
-    """Upload the local test data from folder_name to test_collection in iRODS. Optional: you can have variations by adding a suffix (or instance '_with_metadata')."""
+    """Upload the local test data from folder_name to test_collection in iRODS. Optional: you can
+    have variations by adding a suffix (or instance '_with_metadata')."""
 
     print(f"Creating {folder_name}{suffix} in iRODS.")
-    source = INPUT_DATA / folder_name
+    source = INPUT_DATA / folder_name  # type: ignore
     upload_directory_to_iRODS(session, source, test_collection, suffix=suffix)
     create_manifest_and_contract_irods(
         session,
@@ -367,7 +369,10 @@ if __name__ == "__main__":  # so it does not run each time we run pytest
             number_of_objects=107,
         )
         setup_case_data_irods(
-            session, "nested_data", test_collection, suffix="_with_metadata"
+            session,
+            "nested_data",
+            test_collection,
+            suffix="_with_metadata",  # type: ignore
         )
         add_random_dataobject_metadata(
             session,
@@ -382,7 +387,10 @@ if __name__ == "__main__":  # so it does not run each time we run pytest
             number_of_objects=107,
         )
         setup_case_data_irods(
-            session, "empty_folder_data", test_collection, suffix="_with_metadata"
+            session,
+            "empty_folder_data",
+            test_collection,
+            suffix="_with_metadata",  # type: ignore
         )
         add_random_collection_metadata(
             session,

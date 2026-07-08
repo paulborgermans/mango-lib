@@ -37,6 +37,6 @@ pythonpath = ["src"]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.3",
+    "pytest>=9.0.3,<9.1.0",
     "pytest-cases>=3.10.1",
 ]

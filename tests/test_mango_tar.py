@@ -1,10 +1,15 @@
-from pathlib import Path
-import tarfile
 import hashlib
-from irods.data_object import iRODSDataObject
-from irods.session import iRODSSession
-from pytest_cases import parametrize_with_cases, fixture
 import os
+import tarfile
+
+import pytest
+from irods.session import iRODSSession
+from pytest_cases import fixture, parametrize_with_cases
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("TEST_MANGO_TAR_COLLECTION"),
+    reason="TEST_MANGO_TAR_COLLECTION environment variable is not set"
+)
 
 
 @fixture(scope="module")
@@ -26,7 +31,8 @@ def test_collection():
 def get_local_manifest_lines(manifest):
     with open(manifest) as m:
         for line in m.readlines():
-          yield line.strip().split(" ", 2)
+            yield line.strip().split(" ", 2)
+
 
 def get_irods_manifest_lines(irods_session, manifest):
     """Gets checksum, size and path from manifest"""
@@ -38,8 +44,8 @@ def get_irods_manifest_lines(irods_session, manifest):
 def get_metadata_lines(irods_session, metadata_file_path):
     """Opens and reads the document that contains the paths of collections or data objects with metadata"""
     with irods_session.data_objects.get(metadata_file_path).open("r") as f:
-            for line in f.readlines():
-                yield line.decode().strip
+        for line in f.readlines():
+            yield line.decode().strip
 
 
 def calculate_sha256sum(file_object):
@@ -79,7 +85,9 @@ def test_irods_tar(path_to_tar, manifest):
                 assert checksum_in_manifest == checksum_in_tar
 
 
-@parametrize_with_cases("path_to_tar,manifest", glob="*tar_irods_to_irods")  #TODO: merge test functions?
+@parametrize_with_cases(
+    "path_to_tar,manifest", glob="*tar_irods_to_irods"
+)  # TODO: merge test functions?
 def test_irods_to_irods_tar(irods_session, path_to_tar, manifest):
     with path_to_tar.open("r") as fp:
         assert tarfile.is_tarfile(fp)
@@ -94,8 +102,13 @@ def test_irods_to_irods_tar(irods_session, path_to_tar, manifest):
                     checksum_in_tar = calculate_sha256sum(f)
                 assert checksum_in_manifest == checksum_in_tar
 
-@parametrize_with_cases("path_to_tar,manifest,folder_name", glob="*package_irods_to_irods")
-def test_irods_to_irods_package(irods_session, path_to_tar, manifest, folder_name, test_collection):
+
+@parametrize_with_cases(
+    "path_to_tar,manifest,folder_name", glob="*package_irods_to_irods"
+)
+def test_irods_to_irods_package(
+    irods_session, path_to_tar, manifest, folder_name, test_collection
+):
     with path_to_tar.open("r") as fp:
         assert tarfile.is_tarfile(fp)
         with tarfile.open(fileobj=fp) as tar:
@@ -104,7 +117,9 @@ def test_irods_to_irods_package(irods_session, path_to_tar, manifest, folder_nam
             assert f"{folder_name}/bag/manifest-sha256.txt" in tarred_files
             for line in get_irods_manifest_lines(irods_session, manifest):
                 checksum_in_manifest, size, file = [item.strip() for item in line]
-                packaged_file = file.replace(f"{test_collection}/{folder_name}/data",f"{folder_name}/bag/data") # TODO: set up the manifest so that we don't have to change the path (it should be folder/bag/data/ from the start)
+                packaged_file = file.replace(
+                    f"{test_collection}/{folder_name}/data", f"{folder_name}/bag/data"
+                )  # TODO: set up the manifest so that we don't have to change the path (it should be folder/bag/data/ from the start)
                 assert packaged_file in tarred_files
                 member = tar.getmember(packaged_file)
                 assert member.size == int(size)
@@ -112,8 +127,12 @@ def test_irods_to_irods_package(irods_session, path_to_tar, manifest, folder_nam
                     checksum_in_tar = calculate_sha256sum(f)
                 assert checksum_in_manifest == checksum_in_tar
         fp.seek(0)
-        metadata_objects_path = f"{test_collection}/{folder_name}/dataobject_metadata.txt"
-        metadata_collections_path = f"{test_collection}/{folder_name}/collection_metadata.txt"
+        metadata_objects_path = (
+            f"{test_collection}/{folder_name}/dataobject_metadata.txt"
+        )
+        metadata_collections_path = (
+            f"{test_collection}/{folder_name}/collection_metadata.txt"
+        )
 
         if irods_session.collections.exists(metadata_objects_path):
             for line in get_metadata_lines(irods_session, metadata_objects_path):
@@ -121,16 +140,13 @@ def test_irods_to_irods_package(irods_session, path_to_tar, manifest, folder_nam
         fp.seek(0)
         if irods_session.collections.exists(metadata_collections_path):
             for line in get_metadata_lines(irods_session, metadata_collections_path):
-                if line == '/data':  # if there is metadata on the root collection 
+                if line == "/data":  # if there is metadata on the root collection
                     collection_json = ".metadata.json"
                 else:
-                    collection_json = f"/{line.split("/")[-1]}.metadata.json"
+                    collection_json = f"/{line.split('/')[-1]}.metadata.json"
                 assert f"{folder_name}/bag/data{line}{collection_json}" in tarred_files
 
-        #loop trough metadata_objects and check if file.metadata.json is in the tar!
-
-
-
+        # loop trough metadata_objects and check if file.metadata.json is in the tar!
 
         #     for line in manifest_lines:
         #         checksum_in_manifest, size, file = [item.strip() for item in line]
@@ -140,4 +156,3 @@ def test_irods_to_irods_package(irods_session, path_to_tar, manifest, folder_nam
         #         with tar.extractfile(member) as f:
         #             checksum_in_tar = calculate_sha256sum(f)
         #         assert checksum_in_manifest == checksum_in_tar
- 

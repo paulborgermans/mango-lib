@@ -1,10 +1,10 @@
-from pytest_cases import parametrize
-from mango_lib.archive import mango_tar, mango_package
-from irods.session import iRODSSession
-from pathlib import Path
 import json
 import uuid
-from irods.helpers import make_session
+from pathlib import Path
+
+from pytest_cases import parametrize
+
+from mango_lib.archive import mango_package, mango_tar
 
 INPUT_DATA = Path("tests/input_data")
 CASES_JSON = Path("tests/test_mango_tar_cases.json")
@@ -137,12 +137,12 @@ def case_package_irods_to_irods(case, irods_session, test_collection, tmp_path):
     # create_contract_irods(irods_session, input_data, contract)
 
     contract_data_objects = irods_session.data_objects.get(
-            f"{test_collection}/{case["name"]}/list_of_files.txt"
-        )
+        f"{test_collection}/{case['name']}/list_of_files.txt"
+    )
 
     contract_collections = irods_session.data_objects.get(
-            f"{test_collection}/{case["name"]}/list_of_directories.txt"
-        )
+        f"{test_collection}/{case['name']}/list_of_directories.txt"
+    )
 
     if not irods_session.collections.exists(parent_collection):
         irods_session.collections.create(parent_collection)
@@ -155,7 +155,6 @@ def case_package_irods_to_irods(case, irods_session, test_collection, tmp_path):
         local_folder=tmp_path,
         return_orchestrator=True,
     )
-
 
     yield package, f"{test_collection}/{case['manifest']}", case["name"]
     irods_session.collections.remove(coll.path, recursive=True)
