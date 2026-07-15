@@ -31,6 +31,7 @@ app.jinja_env.add_extension(MangoJinjaExtension)
 import base64
 import binascii
 import datetime
+import json
 import os
 import re
 import zoneinfo
@@ -164,6 +165,11 @@ def iter_intersection(set1: Iterable, set2: Iterable, return_type: str | type = 
 
 
 @MangoJinjaExtension.template_filter()
+def intersection(set1, set2):
+    return iter_intersection(set1, set2, return_type=set)
+
+
+@MangoJinjaExtension.template_filter()
 def bleach_clean(suspect: str, **kwargs) -> str:
     """Escapes dangerous content for html and js
 
@@ -246,3 +252,7 @@ def mango_filesizeformat(value, binary=False, wrap_element="span"):
     return Markup(
         f'<{wrap_element} title="{value} bytes">{do_filesizeformat(value, binary=binary)}</{wrap_element}>'
     )
+
+@MangoJinjaExtension.template_filter()
+def pprint_as_json(anything, indent=2):
+    return json.dumps(anything, indent=indent)
