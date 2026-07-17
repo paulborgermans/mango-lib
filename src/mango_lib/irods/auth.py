@@ -13,15 +13,20 @@ import importlib
 import logging
 import os
 from collections.abc import Callable
-from typing import Optional
+from typing import Optional, Protocol
 
 from irods.session import iRODSSession
 
 ZoneType = str
 ClientUserType = str
-ZoneOperatorSessionFunction = Callable[
-    [Optional[ZoneType], Optional[ClientUserType]], iRODSSession
-]
+
+
+class ZoneOperatorSessionFunction(Protocol):
+    def __call__(
+        self,
+        zone: Optional[ZoneType] = None,
+        client_user: Optional[ClientUserType] = None,
+    ) -> iRODSSession: ...
 
 
 def simple_get_zone_operator_session(
